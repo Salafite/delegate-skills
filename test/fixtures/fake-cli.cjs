@@ -294,6 +294,7 @@ if (["omp-success", "omp-error"].includes(process.env.SMOKE_MODE)) {
       },
     }));
     console.log(JSON.stringify({ type: "agent_end", messages: [] }));
+    process.exit(0);
   });
 }
 if (process.env.KIRO_FAKE_MODE === "large-stdout") {

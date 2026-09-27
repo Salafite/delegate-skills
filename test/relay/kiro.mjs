@@ -80,11 +80,16 @@ export async function runKiro(h) {
   }));
   const laneWork = h.committedRepo("work-success-kiro-lane");
   const laneOut = join(h.scratch, "out-success-kiro-lane");
+  // The lane config is hand-written under laneHome/.config, so ambient
+  // XDG_CONFIG_HOME must not redirect the relay's global-config read
+  // elsewhere (same scrub the omp/copilot lane tests apply to fleetEnv).
+  const laneEnv = { ...h.baseEnv, HOME: laneHome, USERPROFILE: laneHome, SMOKE_MODE: "kiro-success" };
+  delete laneEnv.XDG_CONFIG_HOME;
   const laneRun = spawnSync(process.execPath, [
     h.relayPath("kiro"), "--brief", h.briefPath, "--cd", laneWork, "--out-dir", laneOut,
     "--lane", "feature", "--resume-id", "11111111-1111-4111-8111-111111111111",
   ], {
-    env: { ...h.baseEnv, HOME: laneHome, USERPROFILE: laneHome, SMOKE_MODE: "kiro-success" },
+    env: laneEnv,
     encoding: "utf8",
     timeout: 30_000,
   });
