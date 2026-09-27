@@ -42,7 +42,7 @@ function applyFleetLane(opts, flagged) {
   if (!opts.lane) return;
   const script = join(dirname(fileURLToPath(import.meta.url)), "../../delegate-setup/scripts/lane.mjs");
   if (!existsSync(script)) fail("--lane requires the delegate-setup skill installed beside this relay");
-  const r = spawnSync(process.execPath, [script, "resolve", "--cwd", opts.cd, "--lane", opts.lane, "--implementer", IMPLEMENTER_KEY], { encoding: "utf8", env: process.env });
+  const r = spawnSync(process.execPath, [script, "resolve", "--cwd", opts.cd, "--lane", opts.lane, "--implementer", IMPLEMENTER_KEY], { encoding: "utf8", env: process.env, timeout: 60_000 });
   if (r.error) fail(`lane resolve failed: ${r.error.message}`);
   if (r.status !== 0) fail((r.stderr || "lane resolve failed").trim().replace(/^lane\.mjs:\s*/, ""));
   let resolved;
