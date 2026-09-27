@@ -13,9 +13,13 @@ export function runDelegateSetup(h) {
   const help = spawnSync(process.execPath, [join(setupDir, "discover.mjs"), "--help"], { encoding: "utf8", timeout: 30_000, });
   h.check("discover --help exits 0", help.status === 0 && /discover\.mjs/.test(help.stdout));
 
+  // Full discover runs probe every implementer CLI sequentially, and probes the
+  // suite's own hanging-stub shims hit their 10s probe timeout each: measured
+  // ~111s on a loaded CI box. Keep this ceiling generous — tightening it turns
+  // a slow box into a false failure (and, unguarded, a suite-aborting crash).
   const discover = spawnSync(process.execPath, [join(setupDir, "discover.mjs")], {
     encoding: "utf8",
-    timeout: 120_000,
+    timeout: 300_000,
   });
   h.check("discover exits 0", discover.status === 0);
   let report = null;
@@ -39,7 +43,7 @@ export function runDelegateSetup(h) {
     writeFileSync(commandCodeOverride, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo override-commandcode; exit 0; fi\nexit 1\n");
     chmodSync(commandCodeOverride, 0o755);
     const overrideDiscover = spawnSync(process.execPath, [join(setupDir, "discover.mjs")], {
-      encoding: "utf8", timeout: 120_000,
+      encoding: "utf8", timeout: 300_000,
       env: { ...process.env, PATH: "", COMMANDCODE_BIN: commandCodeOverride },
     });
     const overrideReport = overrideDiscover.status === 0 ? JSON.parse(overrideDiscover.stdout) : null;
@@ -64,7 +68,7 @@ export function runDelegateSetup(h) {
       ["a set-but-empty PATH", ""],
     ]) {
       const cwdDiscover = spawnSync(process.execPath, [join(setupDir, "discover.mjs")], {
-        encoding: "utf8", timeout: 120_000,
+        encoding: "utf8", timeout: 300_000,
         cwd: cwdProbe,
         env: { ...process.env, PATH: pathValue },
       });
@@ -78,7 +82,7 @@ export function runDelegateSetup(h) {
 
   if (h.WIN) {
     const withoutConfiguredCommandCode = spawnSync(process.execPath, [join(setupDir, "discover.mjs")], {
-      encoding: "utf8", timeout: 120_000,
+      encoding: "utf8", timeout: 300_000,
       env: { ...h.baseEnv, COMMANDCODE_BIN: "" },
     });
     const commandCode = withoutConfiguredCommandCode.status === 0
@@ -95,7 +99,7 @@ export function runDelegateSetup(h) {
       ...(comspec ? [["COMMANDCODE_BIN=COMSPEC", comspec]] : []),
     ]) {
       const rejectedOverride = spawnSync(process.execPath, [join(setupDir, "discover.mjs")], {
-        encoding: "utf8", timeout: 120_000,
+        encoding: "utf8", timeout: 300_000,
         env: { ...h.baseEnv, COMMANDCODE_BIN: commandCodeBin },
       });
       const rejectedReport = rejectedOverride.status === 0 ? JSON.parse(rejectedOverride.stdout) : null;
@@ -108,7 +112,7 @@ export function runDelegateSetup(h) {
     const commandCodeShim = join(h.scratch, "commandcode.cmd");
     writeFileSync(commandCodeShim, "@echo override-commandcode\r\n");
     const withCommandCodeShim = spawnSync(process.execPath, [join(setupDir, "discover.mjs")], {
-      encoding: "utf8", timeout: 120_000,
+      encoding: "utf8", timeout: 300_000,
       env: { ...h.baseEnv, COMMANDCODE_BIN: commandCodeShim },
     });
     const shimmedCommandCode = withCommandCodeShim.status === 0 ? JSON.parse(withCommandCodeShim.stdout) : null;
@@ -125,7 +129,7 @@ export function runDelegateSetup(h) {
   writeFileSync(agyProbePath, h.WIN ? "@echo 1.2.3:\r\n" : "#!/bin/sh\nprintf '1.2.3:\\n'\n");
   if (!h.WIN) chmodSync(agyProbePath, 0o755);
   const agyDiscover = spawnSync(process.execPath, [join(setupDir, "discover.mjs")], {
-    encoding: "utf8", timeout: 120_000,
+    encoding: "utf8", timeout: 300_000,
     env: { ...process.env, PATH: agyProbeDir },
   });
   let agyReport = null;
@@ -186,7 +190,7 @@ if (observation === "models") {
   ]) {
     const countPath = join(grokProbeDir, `${first}.count`);
     const grokDiscover = spawnSync(process.execPath, [join(setupDir, "discover.mjs")], {
-      encoding: "utf8", timeout: 120_000,
+      encoding: "utf8", timeout: 300_000,
       env: {
         ...process.env,
         PATH: grokProbeDir,
