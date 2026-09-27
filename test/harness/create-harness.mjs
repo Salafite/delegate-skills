@@ -78,17 +78,17 @@ export function createHarness() {
   h.freshRepo = (name) => {
     const dir = join(scratch, name);
     mkdirSync(dir);
-    spawnSync("git", ["-C", dir, "init", "-q"], { encoding: "utf8" });
+    spawnSync("git", ["-C", dir, "init", "-q"], { encoding: "utf8", timeout: 30_000, });
     return dir;
   };
 
   h.committedRepo = (name) => {
     const dir = h.freshRepo(name);
     writeFileSync(join(dir, "seed.txt"), "seed\n");
-    spawnSync("git", ["-C", dir, "config", "user.email", "smoke@example.invalid"], { encoding: "utf8" });
-    spawnSync("git", ["-C", dir, "config", "user.name", "Relay Smoke"], { encoding: "utf8" });
-    spawnSync("git", ["-C", dir, "add", "seed.txt"], { encoding: "utf8" });
-    spawnSync("git", ["-C", dir, "commit", "-qm", "seed"], { encoding: "utf8" });
+    spawnSync("git", ["-C", dir, "config", "user.email", "smoke@example.invalid"], { encoding: "utf8", timeout: 30_000, });
+    spawnSync("git", ["-C", dir, "config", "user.name", "Relay Smoke"], { encoding: "utf8", timeout: 30_000, });
+    spawnSync("git", ["-C", dir, "add", "seed.txt"], { encoding: "utf8", timeout: 30_000, });
+    spawnSync("git", ["-C", dir, "commit", "-qm", "seed"], { encoding: "utf8", timeout: 30_000, });
     return dir;
   };
 

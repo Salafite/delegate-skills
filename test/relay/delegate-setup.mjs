@@ -6,11 +6,11 @@ import { delimiter, join } from "node:path";
 export function runDelegateSetup(h) {
   const setupDir = join(h.testDir, "..", "skills", "delegate-setup", "scripts");
   for (const script of ["discover.mjs", "config.mjs", "implementers.mjs", "lane.mjs"]) {
-    const c = spawnSync(process.execPath, ["--check", join(setupDir, script)], { encoding: "utf8" });
+    const c = spawnSync(process.execPath, ["--check", join(setupDir, script)], { encoding: "utf8", timeout: 30_000, });
     h.check(`syntax: delegate-setup/scripts/${script}`, c.status === 0);
   }
 
-  const help = spawnSync(process.execPath, [join(setupDir, "discover.mjs"), "--help"], { encoding: "utf8" });
+  const help = spawnSync(process.execPath, [join(setupDir, "discover.mjs"), "--help"], { encoding: "utf8", timeout: 30_000, });
   h.check("discover --help exits 0", help.status === 0 && /discover\.mjs/.test(help.stdout));
 
   const discover = spawnSync(process.execPath, [join(setupDir, "discover.mjs")], {
@@ -39,14 +39,14 @@ export function runDelegateSetup(h) {
     writeFileSync(commandCodeOverride, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo override-commandcode; exit 0; fi\nexit 1\n");
     chmodSync(commandCodeOverride, 0o755);
     const overrideDiscover = spawnSync(process.execPath, [join(setupDir, "discover.mjs")], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 120_000,
       env: { ...process.env, PATH: "", COMMANDCODE_BIN: commandCodeOverride },
     });
-    const overrideReport = JSON.parse(overrideDiscover.stdout);
+    const overrideReport = overrideDiscover.status === 0 ? JSON.parse(overrideDiscover.stdout) : null;
     h.check(
       "discover honors COMMANDCODE_BIN outside Windows",
-      overrideReport.discovered.some(({ key, path, version }) =>
-        key === "commandcode" && path === commandCodeOverride && version === "override-commandcode"),
+      overrideReport?.discovered?.some(({ key, path, version }) =>
+        key === "commandcode" && path === commandCodeOverride && version === "override-commandcode") ?? false,
     );
 
     // An empty PATH component is the current directory in POSIX lookup, so a
@@ -64,7 +64,7 @@ export function runDelegateSetup(h) {
       ["a set-but-empty PATH", ""],
     ]) {
       const cwdDiscover = spawnSync(process.execPath, [join(setupDir, "discover.mjs")], {
-        encoding: "utf8",
+        encoding: "utf8", timeout: 120_000,
         cwd: cwdProbe,
         env: { ...process.env, PATH: pathValue },
       });
@@ -78,14 +78,16 @@ export function runDelegateSetup(h) {
 
   if (h.WIN) {
     const withoutConfiguredCommandCode = spawnSync(process.execPath, [join(setupDir, "discover.mjs")], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 120_000,
       env: { ...h.baseEnv, COMMANDCODE_BIN: "" },
     });
-    const commandCode = JSON.parse(withoutConfiguredCommandCode.stdout);
+    const commandCode = withoutConfiguredCommandCode.status === 0
+      ? JSON.parse(withoutConfiguredCommandCode.stdout)
+      : null;
     h.check(
       "discover uses the Windows cmdc shim instead of cmd.exe",
-      commandCode.discovered.some(({ key, path }) =>
-        key === "commandcode" && /cmdc\.cmd$/i.test(path)),
+      commandCode?.discovered?.some(({ key, path }) =>
+        key === "commandcode" && /cmdc\.cmd$/i.test(path)) ?? false,
     );
     const comspec = h.baseEnv.ComSpec || h.baseEnv.COMSPEC;
     for (const [name, commandCodeBin] of [
@@ -93,27 +95,27 @@ export function runDelegateSetup(h) {
       ...(comspec ? [["COMMANDCODE_BIN=COMSPEC", comspec]] : []),
     ]) {
       const rejectedOverride = spawnSync(process.execPath, [join(setupDir, "discover.mjs")], {
-        encoding: "utf8",
+        encoding: "utf8", timeout: 120_000,
         env: { ...h.baseEnv, COMMANDCODE_BIN: commandCodeBin },
       });
-      const rejectedReport = JSON.parse(rejectedOverride.stdout);
+      const rejectedReport = rejectedOverride.status === 0 ? JSON.parse(rejectedOverride.stdout) : null;
       h.check(
         `discover rejects ${name} on Windows`,
-        rejectedReport.missing.some(({ key }) => key === "commandcode") &&
-          !rejectedReport.discovered.some(({ key }) => key === "commandcode"),
+        (rejectedReport?.missing?.some(({ key }) => key === "commandcode") ?? false) &&
+          !(rejectedReport?.discovered?.some(({ key }) => key === "commandcode") ?? false),
       );
     }
     const commandCodeShim = join(h.scratch, "commandcode.cmd");
     writeFileSync(commandCodeShim, "@echo override-commandcode\r\n");
     const withCommandCodeShim = spawnSync(process.execPath, [join(setupDir, "discover.mjs")], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 120_000,
       env: { ...h.baseEnv, COMMANDCODE_BIN: commandCodeShim },
     });
-    const shimmedCommandCode = JSON.parse(withCommandCodeShim.stdout);
+    const shimmedCommandCode = withCommandCodeShim.status === 0 ? JSON.parse(withCommandCodeShim.stdout) : null;
     h.check(
       "discover probes a configured Command Code .cmd shim",
-      shimmedCommandCode.discovered.some(({ key, path, version }) =>
-        key === "commandcode" && path === commandCodeShim && version === "override-commandcode"),
+      shimmedCommandCode?.discovered?.some(({ key, path, version }) =>
+        key === "commandcode" && path === commandCodeShim && version === "override-commandcode") ?? false,
     );
   }
 
@@ -123,7 +125,7 @@ export function runDelegateSetup(h) {
   writeFileSync(agyProbePath, h.WIN ? "@echo 1.2.3:\r\n" : "#!/bin/sh\nprintf '1.2.3:\\n'\n");
   if (!h.WIN) chmodSync(agyProbePath, 0o755);
   const agyDiscover = spawnSync(process.execPath, [join(setupDir, "discover.mjs")], {
-    encoding: "utf8",
+    encoding: "utf8", timeout: 120_000,
     env: { ...process.env, PATH: agyProbeDir },
   });
   let agyReport = null;
@@ -184,7 +186,7 @@ if (observation === "models") {
   ]) {
     const countPath = join(grokProbeDir, `${first}.count`);
     const grokDiscover = spawnSync(process.execPath, [join(setupDir, "discover.mjs")], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 120_000,
       env: {
         ...process.env,
         PATH: grokProbeDir,
@@ -247,7 +249,7 @@ if (observation === "models") {
     writeFileSync(goodFile, `${JSON.stringify(good, null, 2)}\n`);
 
     const validate = spawnSync(process.execPath, [join(setupDir, "config.mjs"), "validate", goodFile], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: process.env,
     });
     h.check("config validate accepts a good map", validate.status === 0);
@@ -259,7 +261,7 @@ if (observation === "models") {
     const bareOpenCodeFile = join(cfgRepo, "bare-opencode.json");
     writeFileSync(bareOpenCodeFile, `${JSON.stringify(bareOpenCode)}\n`);
     const rejectBare = spawnSync(process.execPath, [join(setupDir, "config.mjs"), "validate", bareOpenCodeFile], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: process.env,
     });
     h.check("config validate requires model on opencode", rejectBare.status === 2);
@@ -271,7 +273,7 @@ if (observation === "models") {
     const bareModelFile = join(cfgRepo, "bare-model.json");
     writeFileSync(bareModelFile, `${JSON.stringify(bareModel)}\n`);
     const rejectBareModel = spawnSync(process.execPath, [join(setupDir, "config.mjs"), "validate", bareModelFile], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: process.env,
     });
     h.check("config validate requires provider/model for opencode", rejectBareModel.status === 2);
@@ -290,7 +292,7 @@ if (observation === "models") {
       const rejected = spawnSync(
         process.execPath,
         [join(setupDir, "config.mjs"), "validate", malformedModelFile],
-        { encoding: "utf8", env: process.env },
+        { encoding: "utf8", timeout: 60_000, env: process.env },
       );
       h.check(
         `config validate requires model text ${boundary} the opencode provider separator (${model})`,
@@ -305,7 +307,7 @@ if (observation === "models") {
     const hugeTimeoutFile = join(cfgRepo, "huge-timeout.json");
     writeFileSync(hugeTimeoutFile, `${JSON.stringify(hugeTimeout)}\n`);
     const rejectTimeout = spawnSync(process.execPath, [join(setupDir, "config.mjs"), "validate", hugeTimeoutFile], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: process.env,
     });
     h.check("config validate rejects timeout above relay ceiling", rejectTimeout.status === 2);
@@ -317,7 +319,7 @@ if (observation === "models") {
     const conflictFile = join(cfgRepo, "conflict-autonomy.json");
     writeFileSync(conflictFile, `${JSON.stringify(conflictAutonomy)}\n`);
     const rejectConflict = spawnSync(process.execPath, [join(setupDir, "config.mjs"), "validate", conflictFile], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: process.env,
     });
     h.check("config validate rejects contradictory readOnly+sandbox", rejectConflict.status === 2);
@@ -331,7 +333,7 @@ if (observation === "models") {
     const rejectClaudeModel = spawnSync(
       process.execPath,
       [join(setupDir, "config.mjs"), "validate", badClaudeModelFile],
-      { encoding: "utf8", env: process.env },
+      { encoding: "utf8", timeout: 60_000, env: process.env },
     );
     h.check(
       "config validate rejects claude model tokens the relay would reject",
@@ -347,7 +349,7 @@ if (observation === "models") {
     const rejectCodexModel = spawnSync(
       process.execPath,
       [join(setupDir, "config.mjs"), "validate", badCodexModelFile],
-      { encoding: "utf8", env: process.env },
+      { encoding: "utf8", timeout: 60_000, env: process.env },
     );
     h.check(
       "config validate rejects shell-unsafe codex model",
@@ -363,7 +365,7 @@ if (observation === "models") {
       const rejected = spawnSync(
         process.execPath,
         [join(setupDir, "config.mjs"), "validate", badCommandCodeDialFile],
-        { encoding: "utf8", env: process.env },
+        { encoding: "utf8", timeout: 60_000, env: process.env },
       );
       h.check(`config validate rejects Command Code ${field} tokens the relay would reject`,
         rejected.status === 2);
@@ -371,7 +373,7 @@ if (observation === "models") {
     const unsafeCodexFlag = spawnSync(
       process.execPath,
       [h.relayPath("codex"), "--brief", h.briefPath, "--model", "x & whoami"],
-      { encoding: "utf8", env: h.baseEnv },
+      { encoding: "utf8", timeout: 60_000, env: h.baseEnv },
     );
     h.check("codex relay rejects shell-unsafe --model", unsafeCodexFlag.status === 2);
 
@@ -384,7 +386,7 @@ if (observation === "models") {
     const rejectVariant = spawnSync(
       process.execPath,
       [join(setupDir, "config.mjs"), "validate", badVariantFile],
-      { encoding: "utf8", env: process.env },
+      { encoding: "utf8", timeout: 60_000, env: process.env },
     );
     h.check(
       "config validate rejects shell-unsafe opencode variant",
@@ -393,7 +395,7 @@ if (observation === "models") {
     const unsafeVariantFlag = spawnSync(
       process.execPath,
       [h.relayPath("opencode"), "--brief", h.briefPath, "--model", "opencode/grok", "--variant", "high & whoami"],
-      { encoding: "utf8", env: h.baseEnv },
+      { encoding: "utf8", timeout: 60_000, env: h.baseEnv },
     );
     h.check("opencode relay rejects shell-unsafe --variant", unsafeVariantFlag.status === 2);
 
@@ -404,7 +406,7 @@ if (observation === "models") {
     const badFile = join(cfgRepo, "bad.json");
     writeFileSync(badFile, `${JSON.stringify(badEffort)}\n`);
     const rejectEffort = spawnSync(process.execPath, [join(setupDir, "config.mjs"), "validate", badFile], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: process.env,
     });
     h.check("config validate rejects effort on opencode", rejectEffort.status === 2);
@@ -416,7 +418,7 @@ if (observation === "models") {
     const badClaudeFile = join(cfgRepo, "bad-claude.json");
     writeFileSync(badClaudeFile, `${JSON.stringify(badClaude)}\n`);
     const rejectClaude = spawnSync(process.execPath, [join(setupDir, "config.mjs"), "validate", badClaudeFile], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: process.env,
     });
     h.check("config validate rejects unknown claude effort", rejectClaude.status === 2);
@@ -428,7 +430,7 @@ if (observation === "models") {
     const badAgyFile = join(cfgRepo, "bad-agy.json");
     writeFileSync(badAgyFile, `${JSON.stringify(badAgy)}\n`);
     const rejectAgy = spawnSync(process.execPath, [join(setupDir, "config.mjs"), "validate", badAgyFile], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: process.env,
     });
     h.check("config validate rejects unknown Agy effort",
@@ -441,7 +443,7 @@ if (observation === "models") {
     const badCopilotFile = join(cfgRepo, "bad-copilot.json");
     writeFileSync(badCopilotFile, `${JSON.stringify(badCopilot)}\n`);
     const rejectCopilot = spawnSync(process.execPath, [join(setupDir, "config.mjs"), "validate", badCopilotFile], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: process.env,
     });
     h.check("config validate rejects unknown copilot effort",
@@ -454,7 +456,7 @@ if (observation === "models") {
     const badOmpFile = join(cfgRepo, "bad-omp.json");
     writeFileSync(badOmpFile, `${JSON.stringify(badOmp)}\n`);
     const rejectOmp = spawnSync(process.execPath, [join(setupDir, "config.mjs"), "validate", badOmpFile], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: process.env,
     });
     h.check("config validate rejects unknown omp thinking effort",
@@ -468,7 +470,7 @@ if (observation === "models") {
       const badKiroFile = join(cfgRepo, `bad-kiro-${field}.json`);
       writeFileSync(badKiroFile, `${JSON.stringify(badKiro)}\n`);
       const rejectKiro = spawnSync(process.execPath, [join(setupDir, "config.mjs"), "validate", badKiroFile], {
-        encoding: "utf8",
+        encoding: "utf8", timeout: 60_000,
         env: process.env,
       });
       h.check(`config validate rejects unknown kiro ${field}`, rejectKiro.status === 2);
@@ -481,7 +483,7 @@ if (observation === "models") {
     const badCursorFile = join(cfgRepo, "bad-cursor.json");
     writeFileSync(badCursorFile, `${JSON.stringify(badCursorSandbox)}\n`);
     const rejectCursor = spawnSync(process.execPath, [join(setupDir, "config.mjs"), "validate", badCursorFile], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: process.env,
     });
     h.check("config validate rejects cursor sandbox dial", rejectCursor.status === 2);
@@ -489,7 +491,7 @@ if (observation === "models") {
     const writeGlobal = spawnSync(
       process.execPath,
       [join(setupDir, "config.mjs"), "write", "--scope", "global", goodFile],
-      { encoding: "utf8", env: process.env },
+      { encoding: "utf8", timeout: 60_000, env: process.env },
     );
     h.check("config write --scope global", writeGlobal.status === 0);
     const globalPath = join(cfgHome, ".config", "delegate-skills", "config.json");
@@ -499,7 +501,7 @@ if (observation === "models") {
     const laneResolve = spawnSync(
       process.execPath,
       [join(setupDir, "lane.mjs"), "resolve", "--cwd", cfgRepo, "--lane", "feature", "--implementer", "opencode"],
-      { encoding: "utf8", env: process.env },
+      { encoding: "utf8", timeout: 60_000, env: process.env },
     );
     let laneJson = null;
     try {
@@ -519,7 +521,7 @@ if (observation === "models") {
     const kiroResolve = spawnSync(
       process.execPath,
       [join(setupDir, "lane.mjs"), "resolve", "--cwd", cfgRepo, "--lane", "kiro-spec", "--implementer", "kiro"],
-      { encoding: "utf8", env: process.env },
+      { encoding: "utf8", timeout: 60_000, env: process.env },
     );
     let kiroJson = null;
     try {
@@ -540,13 +542,13 @@ if (observation === "models") {
     const grokReadOnlyFile = join(cfgRepo, "grok-readonly.json");
     writeFileSync(grokReadOnlyFile, `${JSON.stringify(grokReadOnly)}\n`);
     spawnSync(process.execPath, [join(setupDir, "config.mjs"), "write", "--scope", "global", grokReadOnlyFile], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: process.env,
     });
     const grokResolve = spawnSync(
       process.execPath,
       [join(setupDir, "lane.mjs"), "resolve", "--cwd", bare, "--lane", "review", "--implementer", "grok"],
-      { encoding: "utf8", env: process.env },
+      { encoding: "utf8", timeout: 60_000, env: process.env },
     );
     let grokDials = null;
     try {
@@ -562,7 +564,7 @@ if (observation === "models") {
     );
     // Restore the multi-lane global map for the rest of the fleet suite.
     spawnSync(process.execPath, [join(setupDir, "config.mjs"), "write", "--scope", "global", goodFile], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: process.env,
     });
 
@@ -573,13 +575,13 @@ if (observation === "models") {
     const ompThinkingFile = join(cfgRepo, "omp-thinking.json");
     writeFileSync(ompThinkingFile, `${JSON.stringify(ompThinking)}\n`);
     spawnSync(process.execPath, [join(setupDir, "config.mjs"), "write", "--scope", "global", ompThinkingFile], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: process.env,
     });
     const ompResolve = spawnSync(
       process.execPath,
       [join(setupDir, "lane.mjs"), "resolve", "--cwd", bare, "--lane", "feature", "--implementer", "omp"],
-      { encoding: "utf8", env: process.env },
+      { encoding: "utf8", timeout: 60_000, env: process.env },
     );
     let ompDials = null;
     try {
@@ -595,14 +597,14 @@ if (observation === "models") {
         ompDials?.dials?.model === "google/fake-model",
     );
     spawnSync(process.execPath, [join(setupDir, "config.mjs"), "write", "--scope", "global", goodFile], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: process.env,
     });
 
     const laneMismatchResolve = spawnSync(
       process.execPath,
       [join(setupDir, "lane.mjs"), "resolve", "--cwd", cfgRepo, "--lane", "feature", "--implementer", "claude"],
-      { encoding: "utf8", env: process.env },
+      { encoding: "utf8", timeout: 60_000, env: process.env },
     );
     h.check(
       "lane resolve: wrong implementer fails loud",
@@ -626,7 +628,7 @@ if (observation === "models") {
     const claudeRoFile = join(cfgRepo, "claude-readonly.json");
     writeFileSync(claudeRoFile, `${JSON.stringify(claudeRoLane)}\n`);
     spawnSync(process.execPath, [join(setupDir, "config.mjs"), "write", "--scope", "global", claudeRoFile], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: process.env,
     });
     const claudeDspOut = join(cfgRepo, "out-claude-dsp");
@@ -644,7 +646,7 @@ if (observation === "models") {
         "--dangerously-skip-permissions",
       ],
       {
-        encoding: "utf8",
+        encoding: "utf8", timeout: 60_000,
         env: {
           ...fleetEnv,
           SMOKE_MODE: "claude-success",
@@ -669,7 +671,7 @@ if (observation === "models") {
     const writeAgyLane = spawnSync(
       process.execPath,
       [join(setupDir, "config.mjs"), "write", "--scope", "global", agyRoFile],
-      { encoding: "utf8", env: process.env },
+      { encoding: "utf8", timeout: 60_000, env: process.env },
     );
     const agyLaneOut = join(cfgRepo, "out-agy-lane");
     const agyLaneArgsFile = join(h.scratch, "args-lane-agy");
@@ -680,7 +682,7 @@ if (observation === "models") {
       "--out-dir", agyLaneOut,
       "--lane", "review",
     ], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: { ...fleetEnv, SMOKE_MODE: "agy-analysis", SMOKE_ARGS_FILE: agyLaneArgsFile },
     });
     const agyLaneArgs = existsSync(agyLaneArgsFile)
@@ -711,7 +713,7 @@ if (observation === "models") {
       "--lane", "review",
       "--dangerously-skip-permissions",
     ], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: { ...fleetEnv, SMOKE_MODE: "agy-analysis", SMOKE_ARGS_FILE: agyDspArgsFile },
     });
     const agyDspArgs = existsSync(agyDspArgsFile)
@@ -726,7 +728,7 @@ if (observation === "models") {
       h.result(agyDspOut).dangerouslySkipPermissions === true &&
       h.result(agyDspOut).readOnly === false);
     spawnSync(process.execPath, [join(setupDir, "config.mjs"), "write", "--scope", "global", goodFile], {
-      encoding: "utf8",
+      encoding: "utf8", timeout: 60_000,
       env: process.env,
     });
 
@@ -740,7 +742,7 @@ if (observation === "models") {
         "--lane", "feature",
       ],
       {
-        encoding: "utf8",
+        encoding: "utf8", timeout: 60_000,
         env: {
           ...fleetEnv,
           SMOKE_MODE: "capture",
@@ -776,7 +778,7 @@ if (observation === "models") {
         "--session", "thread-review",
       ],
       {
-        encoding: "utf8",
+        encoding: "utf8", timeout: 60_000,
         env: { ...fleetEnv, SMOKE_MODE: "capture", SMOKE_ARGS_FILE: codexResumeArgsFile },
       },
     );
@@ -803,7 +805,7 @@ if (observation === "models") {
         "--session", "ses_review",
       ],
       {
-        encoding: "utf8",
+        encoding: "utf8", timeout: 60_000,
         env: { ...fleetEnv, SMOKE_MODE: "capture", SMOKE_ARGS_FILE: opencodeResumeArgsFile },
       },
     );
@@ -820,7 +822,7 @@ if (observation === "models") {
     const wrongSkill = spawnSync(
       process.execPath,
       [h.relayPath("claude"), "--brief", laneBrief, "--cd", cfgRepo, "--lane", "feature"],
-      { encoding: "utf8", env: fleetEnv },
+      { encoding: "utf8", timeout: 60_000, env: fleetEnv },
     );
     h.check(
       "relay --lane: wrong skill fails loud (no remap)",
@@ -844,7 +846,7 @@ if (observation === "models") {
         "--variant", "low",
       ],
       {
-        encoding: "utf8",
+        encoding: "utf8", timeout: 60_000,
         env: {
           ...fleetEnv,
           SMOKE_MODE: "capture",
@@ -882,7 +884,7 @@ if (observation === "models") {
     const rejectUntrustedProject = spawnSync(
       process.execPath,
       [join(setupDir, "lane.mjs"), "resolve", "--cwd", cfgRepo, "--lane", "feature", "--implementer", "codex"],
-      { encoding: "utf8", env: process.env },
+      { encoding: "utf8", timeout: 60_000, env: process.env },
     );
     h.check(
       "lane resolve: cloned project config fails closed until approved",
@@ -892,7 +894,7 @@ if (observation === "models") {
     const writeProject = spawnSync(
       process.execPath,
       [join(setupDir, "config.mjs"), "write", "--scope", "project", "--cwd", cfgRepo, projectFile],
-      { encoding: "utf8", env: process.env },
+      { encoding: "utf8", timeout: 60_000, env: process.env },
     );
     h.check("config write --scope project", writeProject.status === 0);
     h.check("project config file created", existsSync(join(cfgRepo, ".delegate", "config.json")));
@@ -915,7 +917,7 @@ if (observation === "models") {
       const escapeWrite = spawnSync(
         process.execPath,
         [join(setupDir, "config.mjs"), "write", "--scope", "project", "--cwd", escapeRepo, projectFile],
-        { encoding: "utf8", env: process.env },
+        { encoding: "utf8", timeout: 60_000, env: process.env },
       );
       h.check(
         "config write rejects symlinked .delegate",
@@ -930,7 +932,7 @@ if (observation === "models") {
     const load = spawnSync(
       process.execPath,
       [join(setupDir, "config.mjs"), "load", "--cwd", cfgRepo],
-      { encoding: "utf8", env: process.env },
+      { encoding: "utf8", timeout: 60_000, env: process.env },
     );
     h.check("config load exits 0", load.status === 0);
     let effective = null;
@@ -955,7 +957,7 @@ if (observation === "models") {
     const loadBare = spawnSync(
       process.execPath,
       [join(setupDir, "config.mjs"), "load", "--cwd", bare],
-      { encoding: "utf8", env: process.env },
+      { encoding: "utf8", timeout: 60_000, env: process.env },
     );
     let bareEff = null;
     try {
@@ -970,7 +972,7 @@ if (observation === "models") {
     const afterOverlay = spawnSync(
       process.execPath,
       [h.relayPath("opencode"), "--brief", laneBrief, "--cd", cfgRepo, "--lane", "feature"],
-      { encoding: "utf8", env: fleetEnv },
+      { encoding: "utf8", timeout: 60_000, env: fleetEnv },
     );
     h.check(
       "relay --lane: project overlay remaps implementer (opencode fails)",
@@ -984,7 +986,7 @@ if (observation === "models") {
     const rejectChangedProject = spawnSync(
       process.execPath,
       [join(setupDir, "lane.mjs"), "resolve", "--cwd", cfgRepo, "--lane", "feature", "--implementer", "codex"],
-      { encoding: "utf8", env: process.env },
+      { encoding: "utf8", timeout: 60_000, env: process.env },
     );
     h.check(
       "lane resolve: project config changes invalidate approval",

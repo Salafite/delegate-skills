@@ -26,7 +26,7 @@ export function installShim(h) {
     if (csc) {
       const csFile = join(shimDir, "fake-cli.cs");
       copyFileSync(join(fixturesDir, "fake-cli.cs"), csFile);
-      const compiled = spawnSync(csc, ["/nologo", `/out:${join(shimDir, "kimi.exe")}`, csFile], { encoding: "utf8" });
+      const compiled = spawnSync(csc, ["/nologo", `/out:${join(shimDir, "kimi.exe")}`, csFile], { encoding: "utf8", timeout: 60_000, });
       h.check("windows: the native fake compiled", compiled.status === 0);
       if (compiled.status === 0) {
         copyFileSync(join(shimDir, "kimi.exe"), join(shimDir, "agy.exe"));
@@ -43,7 +43,7 @@ export function installShim(h) {
       }
       const signalSource = join(fixturesDir, "console-signal-helper.cs");
       const signalHelper = join(shimDir, "console-signal-helper.exe");
-      const signalCompiled = spawnSync(csc, ["/nologo", "/target:exe", `/out:${signalHelper}`, signalSource], { encoding: "utf8" });
+      const signalCompiled = spawnSync(csc, ["/nologo", "/target:exe", `/out:${signalHelper}`, signalSource], { encoding: "utf8", timeout: 60_000, });
       h.check("windows: console signal helper compiled", signalCompiled.status === 0);
       if (signalCompiled.status !== 0) console.error(`${signalCompiled.stdout ?? ""}${signalCompiled.stderr ?? ""}`);
       h.consoleSignalHelper = signalCompiled.status === 0 ? signalHelper : null;
