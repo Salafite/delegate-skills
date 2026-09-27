@@ -521,6 +521,11 @@ async function grokVersion(probeTimeoutMs) {
   // retrying either would only spend the bound a second time.
   const startedAt = performance.now();
   const documented = await probe(["version"]);
+  // A missing binary is "not installed", not a broken install: report it as
+  // unavailable (exit 127) rather than a preflight failure. Anything else —
+  // a hung probe we killed, or a real non-zero exit — means grok is installed
+  // but not usable.
+  if (documented.error?.code === "ENOENT") return { version: null, error: null };
   if (documented.version || !documented.error || documented.error.code === "ETIMEDOUT") return documented;
   const remainingMs = Math.floor(probeTimeoutMs - (performance.now() - startedAt));
   if (remainingMs <= 0) return { version: null, error: { code: "ETIMEDOUT" } };
